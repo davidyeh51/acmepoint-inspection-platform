@@ -4,7 +4,7 @@
  */
 
 window.SEED_REPORT = {
-  id: "seed-report-20260907-dhef",
+  id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
   report_number: "CF086-20260907-DHEF",
   form_version: "CF-086 版次 11",
   site_name: "東和家樂福一、二期",

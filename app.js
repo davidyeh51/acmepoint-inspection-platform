@@ -22,7 +22,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function initializeApp() {
   updateSupabaseStatusPill();
 
-  // 載入報告清單
+  // 預填 Supabase 設定表單
+  if (document.getElementById('sb-settings-url')) {
+    document.getElementById('sb-settings-url').value = SupabaseConfig.getUrl();
+  }
+  if (document.getElementById('sb-settings-key')) {
+    document.getElementById('sb-settings-key').value = SupabaseConfig.getKey();
+  }
+
+  // 載入報告清單 (優先自 Supabase 雲端即時同步)
   allReports = await window.supabaseService.getReports();
   currentReport = allReports[0] || window.SEED_REPORT;
 
@@ -42,7 +50,7 @@ function updateSupabaseStatusPill() {
 
   if (isConn) {
     pill.className = 'flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 transition shadow-sm';
-    text.textContent = '🟢 Supabase 雲端已連線';
+    text.textContent = '🟢 Supabase 雲端已連線 (即時同步)';
   } else {
     pill.className = 'flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition shadow-sm';
     text.textContent = '🟠 本地展示模式 (點擊設定)';
