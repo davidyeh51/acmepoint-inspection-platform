@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>進金生能源 6692 ｜ 太陽光電巡檢報告智能自動化平台 (CF-086)</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            acme: {
+              navy: '#0e3776',
+              blue: '#1e40af',
+              light: '#eff6ff',
+              orange: '#f97316',
+              darkorange: '#ea580c'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Supabase JS SDK v2 CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col">
+
+  <!-- ==============================================================================
+       1. 頂部主要導航列 (Navbar)
+       ============================================================================== -->
+  <header id="app-navbar" class="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        
+        <!-- Logo 與系統名稱 -->
+        <div class="flex items-center space-x-3">
+          <div class="flex items-center space-x-2">
+            <span class="bg-gradient-to-r from-blue-900 to-indigo-800 text-white font-black text-xl px-2.5 py-1 rounded shadow-sm tracking-wider">
+              ACME 6692
+            </span>
+          </div>
+          <div class="h-6 w-px bg-slate-300"></div>
+          <div>
+            <h1 class="text-base sm:text-lg font-bold text-slate-900 flex items-center gap-2">
+              太陽光電巡檢報告智能平台
+              <span class="text-xs bg-blue-50 text-blue-700 font-semibold px-2 py-0.5 rounded border border-blue-200">
+                CF-086 版次 11
+              </span>
+            </h1>
+            <p class="text-xs text-slate-500 hidden sm:block">進金生能源服務 ｜ 4.6 運維管理 AI 自動化模組</p>
+          </div>
+        </div>
+
+        <!-- 右側狀態與操作 -->
+        <div class="flex items-center space-x-3">
+          <!-- 角色切換標籤 -->
+          <div class="hidden md:flex items-center bg-slate-100 rounded-lg p-1 border border-slate-200 text-xs font-medium">
+            <span class="text-slate-500 px-2">目前角色:</span>
+            <button id="role-engineer-btn" onclick="setRole('engineer')" class="px-2.5 py-1 rounded bg-white text-blue-700 shadow-sm font-semibold transition">
+              維運工程師
+            </button>
+            <button id="role-manager-btn" onclick="setRole('manager')" class="px-2.5 py-1 rounded text-slate-600 hover:text-slate-900 transition">
+              課長審核
+            </button>
+            <button id="role-client-btn" onclick="setRole('client')" class="px-2.5 py-1 rounded text-slate-600 hover:text-slate-900 transition">
+              業主客戶
+            </button>
+          </div>
+
+          <!-- Supabase 連線狀態標籤 -->
+          <button onclick="openConfigModal()" id="supabase-status-pill" class="flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition shadow-sm" title="點擊設定 Supabase BaaS 雲端連線">
+            <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+            <span id="supabase-status-text">本地展示模式</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- 主要功能分頁導航 (Tabs) -->
+    <div id="tabs-header" class="bg-slate-50 border-t border-slate-200 px-4 sm:px-6 lg:px-8">
+      <div class="max-w-7xl mx-auto flex space-x-2 sm:space-x-4 overflow-x-auto py-2 text-sm">
+        <button onclick="switchTab('dashboard')" id="tab-btn-dashboard" class="tab-btn active flex items-center gap-2 px-3.5 py-2 font-semibold rounded-lg bg-blue-700 text-white shadow-sm transition">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          巡檢總覽
+        </button>
+        <button onclick="switchTab('ai-input')" id="tab-btn-ai-input" class="tab-btn flex items-center gap-2 px-3.5 py-2 font-medium rounded-lg text-slate-600 hover:bg-slate-200 transition">
+          <i data-lucide="sparkles" class="w-4 h-4 text-amber-600"></i>
+          AI 自然語言填報
+        </button>
+        <button onclick="switchTab('editor')" id="tab-btn-editor" class="tab-btn flex items-center gap-2 px-3.5 py-2 font-medium rounded-lg text-slate-600 hover:bg-slate-200 transition">
+          <i data-lucide="file-edit" class="w-4 h-4 text-indigo-600"></i>
+          CF-086 表單編輯
+        </button>
+        <button onclick="switchTab('preview')" id="tab-btn-preview" class="tab-btn flex items-center gap-2 px-3.5 py-2 font-medium rounded-lg text-slate-600 hover:bg-slate-200 transition">
+          <i data-lucide="printer" class="w-4 h-4 text-emerald-600"></i>
+          1:1 正式報告預覽 (列印)
+        </button>
+        <button onclick="switchTab('review')" id="tab-btn-review" class="tab-btn flex items-center gap-2 px-3.5 py-2 font-medium rounded-lg text-slate-600 hover:bg-slate-200 transition">
+          <i data-lucide="check-check" class="w-4 h-4 text-rose-600"></i>
+          審核與客戶派送
+        </button>
+        <button onclick="switchTab('settings')" id="tab-btn-settings" class="tab-btn flex items-center gap-2 px-3.5 py-2 font-medium rounded-lg text-slate-600 hover:bg-slate-200 transition">
+          <i data-lucide="database" class="w-4 h-4 text-cyan-600"></i>
+          Supabase 設定 & SQL
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==============================================================================
+       主體內容區域 (Main Content Tabs)
+       ============================================================================== -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+    <!-- TAB 1: 巡檢儀表板與報告列表 (Dashboard) -->
+    <section id="tab-dashboard" class="tab-content block space-y-6">
+      
+      <!-- 頂部統計指標 -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase">本季已完成巡檢</p>
+            <p class="text-2xl font-black text-slate-900 mt-1" id="stat-completed-count">1 案場</p>
+            <p class="text-xs text-emerald-600 mt-1 font-medium flex items-center gap-1">
+              <i data-lucide="check-circle" class="w-3.5 h-3.5"></i> Q3 東和家樂福合格
+            </p>
+          </div>
+          <div class="w-12 h-12 bg-blue-50 text-blue-700 rounded-xl flex items-center justify-center font-bold">
+            <i data-lucide="clipboard-check" class="w-6 h-6"></i>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase">待主管審核</p>
+            <p class="text-2xl font-black text-amber-600 mt-1" id="stat-pending-review">0 件</p>
+            <p class="text-xs text-slate-500 mt-1 font-medium">即時推播主管簽章</p>
+          </div>
+          <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold">
+            <i data-lucide="clock" class="w-6 h-6"></i>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase">直流電性量測 RA</p>
+            <p class="text-2xl font-black text-emerald-600 mt-1">0.83 ~ 0.86</p>
+            <p class="text-xs text-emerald-600 mt-1 font-medium">高於合約 6 年標準 (≧0.75)</p>
+          </div>
+          <div class="w-12 h-12 bg-emerald-50 text-emerald-700 rounded-xl flex items-center justify-center font-bold">
+            <i data-lucide="zap" class="w-6 h-6"></i>
+          </div>
+        </div>
+
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+          <div>
+            <p class="text-xs font-semibold text-slate-500 uppercase">待改善與追蹤項目</p>
+            <p class="text-2xl font-black text-rose-600 mt-1" id="stat-issue-count">2 項</p>
+            <p class="text-xs text-rose-500 mt-1 font-medium">MVCB保險絲 / GPT礙子</p>
+          </div>
+          <div class="w-12 h-12 bg-rose-50 text-rose-700 rounded-xl flex items-center justify-center font-bold">
+            <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- 快速啟動按鈕列 -->
+      <div class="bg-gradient-to-r from-blue-900 to-indigo-900 text-white rounded-2xl p-6 shadow-md flex flex-col md:flex-row items-center justify-between gap-4">
+        <div>
+          <h2 class="text-xl font-black">準備開始新的電廠定檢？</h2>
+          <p class="text-blue-200 text-sm mt-1">
+            工程師可直接透過語音輸入「今天做了些什麼」、拖曳上傳現場照片，AI 將自動生成完整 33 頁 CF-086 巡檢報告！
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button onclick="switchTab('ai-input')" class="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm shadow-md transition flex items-center gap-2">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            進入 AI 自然語言填報
+          </button>
+          <button onclick="resetToSampleReport()" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-semibold text-sm border border-white/20 transition">
+            重新載入東和家樂福範本
+          </button>
+        </div>
+      </div>
+
+      <!-- 報告列表 -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+          <div>
+            <h3 class="text-base font-bold text-slate-900">巡檢報告歷史清冊 (CF-086)</h3>
+            <p class="text-xs text-slate-500 mt-0.5">點擊任意報告即可檢視、編輯、核准或發送給客戶</p>
+          </div>
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <input type="text" id="report-search-input" oninput="filterReportsList()" placeholder="搜尋案場、日期、編號..." class="text-xs px-3 py-2 border border-slate-300 rounded-lg w-full sm:w-64 focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs text-slate-600">
+            <thead class="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 uppercase tracking-wider">
+              <tr>
+                <th class="px-5 py-3.5">報告編號</th>
+                <th class="px-5 py-3.5">案場名稱</th>
+                <th class="px-5 py-3.5">容量 (kWp)</th>
+                <th class="px-5 py-3.5">巡檢日期 / 季別</th>
+                <th class="px-5 py-3.5">巡檢人員</th>
+                <th class="px-5 py-3.5">狀態</th>
+                <th class="px-5 py-3.5 text-right">操作</th>
+              </tr>
+            </thead>
+            <tbody id="reports-table-body" class="divide-y divide-slate-100">
+              <!-- 動態渲染報告列 -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- TAB 2: AI 自然語言填報 (AI Input & Upload) -->
+    <section id="tab-ai-input" class="tab-content hidden space-y-6">
+      
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
+              <i data-lucide="bot" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-slate-900">工程師 AI 巡檢口述 / 隨手筆記輸入</h2>
+              <p class="text-xs text-slate-500">用白話文描述巡檢了什麼、發現什麼缺失，AI 自動對應到 33 頁表單的各項量測與勾選項目</p>
+            </div>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="loadSamplePrompt()" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition flex items-center gap-1.5">
+              <i data-lucide="file-text" class="w-3.5 h-3.5 text-blue-600"></i>
+              帶入東和家樂福口述範本
+            </button>
+            <button onclick="clearPromptInput()" class="text-xs font-medium px-3 py-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition">
+              清空
+            </button>
+          </div>
+        </div>
+
+        <!-- 文字輸入區域 -->
+        <div class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1.5">
+              現場口述筆記 (支援語音輸入轉文字、工程師隨筆)：
+            </label>
+            <textarea id="ai-prompt-input" rows="7" placeholder="例：今天前往東和家樂福一、二期執行 Q3 巡檢，人員姜興中、洪稜凱、黃昱超。現場晴天，日照940W/m2，大氣溫度30.9度，模組背貼44.1度。光電板外觀正常，抽檢C區模組螺絲無鬆脫，熱顯最高溫46.9度。發現配電箱MVCB盤照明Fuse失效，以及GPT盤礙子劣化建議更換陶瓷型。量測有載電流量測RA都在0.83~0.86，合格..." class="w-full p-4 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none leading-relaxed transition font-sans"></textarea>
+          </div>
+
+          <!-- 照片拖曳上傳與自動分類區 -->
+          <div class="border-2 border-dashed border-slate-300 rounded-xl p-6 text-center hover:border-blue-500 bg-slate-50/50 transition" id="photo-dropzone">
+            <input type="file" id="batch-photo-input" multiple accept="image/*" class="hidden" onchange="handlePhotoUpload(this.files)">
+            <div class="flex flex-col items-center justify-center space-y-2 cursor-pointer" onclick="document.getElementById('batch-photo-input').click()">
+              <div class="w-12 h-12 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center">
+                <i data-lucide="upload-cloud" class="w-6 h-6"></i>
+              </div>
+              <p class="text-sm font-bold text-slate-800">拖曳現場照片至此，或點擊選擇檔案 (支援批次多選)</p>
+              <p class="text-xs text-slate-500">系統將依據照片內容或檔名自動歸類至「模組外觀、螺絲抽檢、熱顯像、變壓器、配電箱」等 12 格標準位置</p>
+            </div>
+            
+            <!-- 已上傳縮圖展示 -->
+            <div id="uploaded-thumbnails-grid" class="mt-4 grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3 pt-3 border-t border-slate-200">
+              <!-- 動態預覽縮圖 -->
+            </div>
+          </div>
+
+          <!-- 解析執行按鈕 -->
+          <div class="flex items-center justify-between pt-2">
+            <span class="text-xs text-slate-500 flex items-center gap-1">
+              <i data-lucide="info" class="w-4 h-4 text-blue-500"></i>
+              內建離線智慧領域專家模型，免聯網亦可完成 100% 欄位精準萃取
+            </span>
+            <button onclick="triggerAIParse()" id="btn-run-ai-parse" class="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white font-bold text-sm shadow-md flex items-center gap-2 transition transform active:scale-95">
+              <i data-lucide="sparkles" class="w-4 h-4 text-amber-300"></i>
+              <span>⚡ 一鍵 AI 智慧剖析並生成 CF-086 報告</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- TAB 3: 結構化編輯器 (CF-086 Form Editor) -->
+    <section id="tab-editor" class="tab-content hidden space-y-6">
+      
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
+        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-100 pb-4 mb-6">
+          <div>
+            <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+              CF-086 巡檢報告表單細部編輯
+              <span class="text-xs font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded border border-slate-300" id="editor-report-no">
+                CF086-20260907-DHEF
+              </span>
+            </h2>
+            <p class="text-xs text-slate-500">可自由調整各章節之量測數值、檢驗結果判定與工程師建議</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="saveCurrentReport()" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-semibold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5">
+              <i data-lucide="save" class="w-4 h-4"></i>
+              儲存報告
+            </button>
+            <button onclick="submitToReview()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5">
+              <i data-lucide="send" class="w-4 h-4"></i>
+              送審核
+            </button>
+          </div>
+        </div>
+
+        <!-- 編輯器子分頁按鈕 -->
+        <div class="flex border-b border-slate-200 space-x-4 mb-6 overflow-x-auto text-xs font-bold">
+          <button onclick="switchEditorSubTab('basic')" id="subtab-btn-basic" class="subtab-btn py-2 px-1 text-blue-700 border-b-2 border-blue-700">
+            1. 基本資訊與環境
+          </button>
+          <button onclick="switchEditorSubTab('suggestions')" id="subtab-btn-suggestions" class="subtab-btn py-2 px-1 text-slate-500 hover:text-slate-800 border-b-2 border-transparent">
+            2. 本次建議與待改善事項
+          </button>
+          <button onclick="switchEditorSubTab('checklists')" id="subtab-btn-checklists" class="subtab-btn py-2 px-1 text-slate-500 hover:text-slate-800 border-b-2 border-transparent">
+            3. 各系統定檢表 (光電/監控/逆變器/配電)
+          </button>
+          <button onclick="switchEditorSubTab('electrical')" id="subtab-btn-electrical" class="subtab-btn py-2 px-1 text-slate-500 hover:text-slate-800 border-b-2 border-transparent">
+            4. 有載直流電性量測 (INV 1~20)
+          </button>
+          <button onclick="switchEditorSubTab('photos')" id="subtab-btn-photos" class="subtab-btn py-2 px-1 text-slate-500 hover:text-slate-800 border-b-2 border-transparent">
+            5. 巡檢照片清冊 (12 格)
+          </button>
+        </div>
+
+        <!-- 子分頁 1: 基本資訊與環境 -->
+        <div id="subtab-basic" class="subtab-content block space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">案場名稱</label>
+              <input type="text" id="edit-site-name" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">裝置容量 (kWp)</label>
+              <input type="number" step="0.01" id="edit-capacity-kwp" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">巡檢日期</label>
+              <input type="date" id="edit-inspection-date" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">巡檢季別 / 類型</label>
+              <div class="flex gap-2">
+                <select id="edit-quarter" class="w-1/2 text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg">
+                  <option value="Q1">Q1 第一季</option>
+                  <option value="Q2">Q2 第二季</option>
+                  <option value="Q3">Q3 第三季</option>
+                  <option value="Q4">Q4 第四季</option>
+                </select>
+                <select id="edit-inspection-type" class="w-1/2 text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg">
+                  <option value="定期巡檢-有載">定期巡檢-有載</option>
+                  <option value="定期巡檢-無載">定期巡檢-無載</option>
+                  <option value="特別巡檢">特別巡檢</option>
+                </select>
+              </div>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">巡檢人員 (以頓號或逗號分隔)</label>
+              <input type="text" id="edit-engineers" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">合約期間</label>
+              <input type="text" id="edit-contract-term" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg">
+            </div>
+          </div>
+
+          <div class="pt-4 border-t border-slate-200">
+            <h4 class="text-xs font-bold text-slate-800 uppercase tracking-wider mb-3">環境量測讀數</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">天氣狀況</label>
+                <input type="text" id="edit-weather" class="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">日照計錶頭 (W/m²)</label>
+                <input type="number" id="edit-radiation" class="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">大氣溫度 (℃)</label>
+                <input type="number" step="0.1" id="edit-ambient-temp" class="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">模組背貼溫度 (℃)</label>
+                <input type="number" step="0.1" id="edit-module-temp" class="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 子分頁 2: 建議與待改善事項 -->
+        <div id="subtab-suggestions" class="subtab-content hidden space-y-4">
+          <p class="text-xs text-slate-500">完整對應 CF-086 第 6 頁與第 7 頁之待改善事項清冊：</p>
+          <div class="space-y-4" id="suggestions-form-container">
+            <!-- 動態填寫光電、監控、逆變器、配電箱、高壓系統之簡述與處置作法 -->
+          </div>
+        </div>
+
+        <!-- 子分頁 3: 各系統定檢表 -->
+        <div id="subtab-checklists" class="subtab-content hidden space-y-6">
+          <p class="text-xs text-slate-500">點擊項目可快速切換判定結果 (OK / / / NG)，並填寫處置數值：</p>
+          <div id="checklists-accordions" class="space-y-4">
+            <!-- 光電系統、監控系統、逆變器、配電箱、升壓站、附屬設施清單 -->
+          </div>
+        </div>
+
+        <!-- 子分頁 4: 有載直流電性量測 -->
+        <div id="subtab-electrical" class="subtab-content hidden space-y-4">
+          <div class="flex justify-between items-center">
+            <p class="text-xs text-slate-500">INV-1 ~ INV-20 各組串有載電壓、電流與 RA 計算公式 (RA = Pa×1000 / P×Gi)：</p>
+            <span class="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200">
+              判定標準：第 6 年 RA ≧ 75%
+            </span>
+          </div>
+          <div class="overflow-x-auto border border-slate-200 rounded-lg max-h-96">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-slate-100 font-bold sticky top-0 text-slate-700">
+                <tr>
+                  <th class="p-2">INV</th>
+                  <th class="p-2">MPPT</th>
+                  <th class="p-2">單片(W)</th>
+                  <th class="p-2">片數</th>
+                  <th class="p-2">日照(W/m²)</th>
+                  <th class="p-2">有載電壓(V)</th>
+                  <th class="p-2">有載電流(A)</th>
+                  <th class="p-2">RA 值</th>
+                  <th class="p-2">結果</th>
+                </tr>
+              </thead>
+              <tbody id="electrical-table-body" class="divide-y divide-slate-100">
+                <!-- 40 組迴路量測列 -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 子分頁 5: 巡檢照片清冊 -->
+        <div id="subtab-photos" class="subtab-content hidden space-y-4">
+          <div class="flex justify-between items-center">
+            <p class="text-xs text-slate-500">巡檢報告第 32 與 33 頁之 12 張標準現場照片：</p>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4" id="editor-photos-grid">
+            <!-- 12 張巡檢照片卡片與更換按鈕 -->
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- TAB 4: 1:1 正式報告預覽 (Official CF-086 View & Print) -->
+    <section id="tab-preview" class="tab-content hidden space-y-6">
+      
+      <!-- 頂部列印與導出工具列 -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap justify-between items-center gap-3 no-print">
+        <div class="flex items-center gap-3">
+          <span class="text-xs font-bold text-slate-700">報告預覽模式：</span>
+          <span class="text-xs bg-blue-50 text-blue-700 px-2.5 py-1 rounded font-semibold border border-blue-200">
+            A4 直式標準排版 (CF-086 版次 11)
+          </span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="window.print()" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-lg shadow-sm transition flex items-center gap-1.5">
+            <i data-lucide="printer" class="w-4 h-4"></i>
+            一鍵列印 / 另存 PDF (A4)
+          </button>
+          <button onclick="exportReportJson()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg border border-slate-300 transition flex items-center gap-1.5">
+            <i data-lucide="download" class="w-4 h-4"></i>
+            導出 JSON
+          </button>
+        </div>
+      </div>
+
+      <!-- 1:1 紙本報告渲染容器 (完整複製 33 頁進金生格式) -->
+      <div id="cf086-report-render-target" class="cf086-paper">
+        <!-- 由 JavaScript 動態完整生成 33 頁內容 -->
+      </div>
+
+    </section>
+
+    <!-- TAB 5: 審核與客戶派送 (Review & Dispatch) -->
+    <section id="tab-review" class="tab-content hidden space-y-6">
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- 左側審核面板 -->
+        <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+          <div class="border-b border-slate-100 pb-4">
+            <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="shield-check" class="w-5 h-5 text-blue-700"></i>
+              維運主管線上覆核與電子簽章
+            </h2>
+            <p class="text-xs text-slate-500 mt-1">覆核巡檢量測數據無誤後，可核可報告並自動加蓋「維運課專用章」</p>
+          </div>
+
+          <div class="space-y-4">
+            <div class="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2">
+              <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500">當前報告狀態：</span>
+                <span id="review-current-status-badge" class="font-bold px-2.5 py-0.5 rounded badge-approved">
+                  已核准 (Approved)
+                </span>
+              </div>
+              <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500">巡檢人員：</span>
+                <span id="review-engineers-text" class="font-semibold text-slate-800">姜興中、洪稜凱、黃昱超</span>
+              </div>
+              <div class="flex justify-between items-center text-xs">
+                <span class="text-slate-500">審核主管：</span>
+                <span id="review-approver-text" class="font-semibold text-slate-800">維運一課課長</span>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">主管審核意見 / 批示備忘錄：</label>
+              <textarea id="review-comments-input" rows="3" placeholder="例如：確認無誤，准予結案並發送業主；高壓GPT盤礙子已轉請工程課排定更換備品。" class="w-full text-xs p-3 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:bg-white focus:ring-2 focus:ring-blue-500"></textarea>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+              <button onclick="approveReport()" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5">
+                <i data-lucide="check" class="w-4 h-4"></i>
+                核准並加蓋專用章
+              </button>
+              <button onclick="rejectReport()" class="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold text-xs rounded-xl border border-rose-200 transition">
+                退回修改
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右側客戶派送面板 -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5">
+          <div class="border-b border-slate-100 pb-3">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+              <i data-lucide="send" class="w-4 h-4 text-orange-500"></i>
+              發送報告給客戶
+            </h3>
+            <p class="text-xs text-slate-500">一鍵產出對客說明文案與專屬檢視連結</p>
+          </div>
+
+          <div class="space-y-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">客戶分享連結 (唯讀預覽)：</label>
+              <div class="flex gap-1">
+                <input type="text" id="share-link-input" readonly class="w-full text-xs p-2 bg-slate-50 border border-slate-300 rounded-lg select-all">
+                <button onclick="copyShareLink()" class="px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold rounded-lg border border-blue-200 transition">
+                  複製
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-600 mb-1">客戶 Email / LINE 派送通知文案：</label>
+              <textarea id="dispatch-message-template" rows="7" class="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-slate-700 font-sans"></textarea>
+            </div>
+
+            <button onclick="copyDispatchText()" class="w-full py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center justify-center gap-1.5">
+              <i data-lucide="copy" class="w-4 h-4"></i>
+              複製通知文案發送客戶
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- TAB 6: Supabase BaaS 設定 & SQL 腳本 (Settings) -->
+    <section id="tab-settings" class="tab-content hidden space-y-6">
+      
+      <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-6">
+        <div>
+          <h2 class="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <i data-lucide="database" class="w-5 h-5 text-blue-700"></i>
+            Supabase BaaS 雲端資料庫與 Storage 整合設定
+          </h2>
+          <p class="text-xs text-slate-500 mt-1">
+            本平台純前端可直接託管於 GitHub Pages。只需在此設定您的 Supabase 專案 URL 與 Anon Public Key，即可享有 PostgreSQL 即時資料庫與相片儲存桶服務！
+          </p>
+        </div>
+
+        <!-- 設定表單 -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Supabase Project URL
+            </label>
+            <input type="text" id="sb-settings-url" placeholder="https://your-project.supabase.co" class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">
+              Supabase Anon Public Key
+            </label>
+            <input type="password" id="sb-settings-key" placeholder="eyJhbGciOiJIUzI1NiIsIn..." class="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+          </div>
+          <div class="md:col-span-2 flex justify-between items-center pt-2">
+            <span class="text-xs text-slate-500">🔒 僅使用公開 Anon Key，符合 GitHub Pages 零金鑰洩漏安全準則。</span>
+            <div class="flex gap-2">
+              <button onclick="testAndSaveSupabaseConfig()" class="px-4 py-2 bg-blue-700 hover:bg-blue-800 text-white font-bold text-xs rounded-lg transition flex items-center gap-1.5 shadow-sm">
+                <i data-lucide="check" class="w-4 h-4"></i>
+                儲存並測試連線
+              </button>
+              <button onclick="clearSupabaseConfig()" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-lg transition">
+                清除設定
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SQL 腳本複製區 -->
+        <div class="space-y-2">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-bold text-slate-800">
+              Supabase 初始化 SQL 腳本 (複製貼至 Supabase SQL Editor 執行即可)：
+            </label>
+            <button onclick="copySqlScript()" class="text-xs font-semibold px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded border border-slate-300 transition flex items-center gap-1">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              複製完整 SQL 腳本
+            </button>
+          </div>
+          <textarea id="schema-sql-display" readonly rows="10" class="w-full text-xs font-mono p-3 bg-slate-900 text-slate-200 rounded-xl leading-relaxed"></textarea>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ==============================================================================
+       頁尾 (Footer)
+       ============================================================================== -->
+  <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-500 no-print mt-auto">
+    <div class="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row justify-between items-center gap-2">
+      <p>© 2026 進金生能源服務股份有限公司 ACMEPOINT ENERGY SERVICES CO., LTD. 版權所有</p>
+      <p class="font-mono text-slate-400">CF-086 版次 11 ｜ 4.6 運維管理 AI Agent</p>
+    </div>
+  </footer>
+
+  <!-- 引用核心 JavaScript 模組 -->
+  <script src="report-data-seed.js"></script>
+  <script src="supabase-client.js"></script>
+  <script src="ai-parser.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
