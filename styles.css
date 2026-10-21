@@ -61,6 +61,39 @@ body {
   border: 1px solid #bfdbfe;
 }
 
+/* 定檢表判定選擇器樣式 (OK綠底、NG紅底、/灰底) */
+.select-checklist-result {
+  min-width: 92px;
+  text-align: center;
+  font-size: 11px;
+  appearance: auto;
+  cursor: pointer;
+  outline: none;
+}
+.select-checklist-result option {
+  background-color: #ffffff !important;
+  color: #1e293b !important;
+  font-weight: 600 !important;
+}
+.select-result-ok {
+  background-color: #10b981 !important;
+  color: #ffffff !important;
+  border-color: #059669 !important;
+  font-weight: 800 !important;
+}
+.select-result-ng {
+  background-color: #ef4444 !important;
+  color: #ffffff !important;
+  border-color: #dc2626 !important;
+  font-weight: 800 !important;
+}
+.select-result-na {
+  background-color: #94a3b8 !important;
+  color: #ffffff !important;
+  border-color: #64748b !important;
+  font-weight: 800 !important;
+}
+
 /* 電子章戳樣式 */
 .stamp-container {
   display: inline-block;

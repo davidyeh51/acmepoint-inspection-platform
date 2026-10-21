@@ -329,51 +329,193 @@ function renderSuggestionsForm() {
   }).join('');
 }
 
+// 判定該檢查項目是否需要數據量測，並提供帶空格的標準範本
+function getMeasurementTemplate(equip = '', item = '') {
+  const text = (equip + ' ' + item).toLowerCase();
+  
+  if (text.includes('日照計錶頭') || (text.includes('日照') && text.includes('錶頭'))) {
+    return { hasData: true, template: '日照值:    W/m²', hint: '需填寫日照錶頭數值 (W/m²)', example: '日照值: 940 W/m²' };
+  }
+  if (text.includes('模組溫度錶頭') || (text.includes('模組溫度') && text.includes('錶頭'))) {
+    return { hasData: true, template: '溫度值:    ℃', hint: '需填寫模組溫度讀數 (℃)', example: '溫度值: 44.1 ℃' };
+  }
+  if (text.includes('大氣溫度錶頭') || (text.includes('大氣溫度') && text.includes('錶頭'))) {
+    return { hasData: true, template: '溫度值:    ℃', hint: '需填寫大氣環境溫度讀數 (℃)', example: '溫度值: 30.9 ℃' };
+  }
+  if (text.includes('監視器數量')) {
+    return { hasData: true, template: '1 組', hint: '現場實裝監視器數量', example: '1 組' };
+  }
+  if (text.includes('熱顯') || text.includes('熱影像')) {
+    return { hasData: true, template: '最高溫:    度', hint: '紅外線熱顯像最高溫 (℃)', example: '最高溫: 48.7 度' };
+  }
+  if (text.includes('電壓記錄')) {
+    return { hasData: true, template: '線電壓:    VAC, 相電壓:    VAC', hint: '耐高壓手套量測交流電壓', example: '線電壓: 393 VAC, 相電壓: 227 VAC' };
+  }
+  if (text.includes('s40') || (text.includes('斷路器') && text.includes('s40'))) {
+    return { hasData: true, template: '顯示電壓值:    kV', hint: '高壓 S40 顯示電壓 (kV)', example: '顯示電壓值: 23.2 kV' };
+  }
+  if (text.includes('油溫') || text.includes('油位')) {
+    return { hasData: true, template: '油溫:    ℃, 油位: 正常', hint: '變壓器油溫檢視孔讀數與油位', example: '油溫: 42 ℃, 油位: 正常' };
+  }
+  if (text.includes('市電電錶') && (text.includes('外觀') || text.includes('鉛封') || text.includes('倍率'))) {
+    return { hasData: true, template: '電號: 34-1651-98, 倍率: 800', hint: '台電電號與 CT 倍率記錄', example: '電號: 34-1651-98, 倍率: 800' };
+  }
+  if (text.includes('市電電錶') && (text.includes('數值') || text.includes('09') || text.includes('109'))) {
+    return { hasData: true, template: '09 數值:    , 109 數值:    ', hint: '台電電子電錶 09 與 109 讀數', example: '09 數值: 31.6, 109 數值: 4039.9' };
+  }
+  if (text.includes('避雷針阻值') || text.includes('接地系統阻值') || text.includes('阻值量測')) {
+    return { hasData: true, template: '電阻值:    Ω', hint: '接地電阻計量測值 (< 10Ω)', example: '電阻值: 0.1 Ω' };
+  }
+  return { hasData: false, template: '', hint: '', example: '' };
+}
+
+// 判定欄位切換 (OK綠底、NG紅底、/灰底)
+function updateChecklistResult(selectEl, groupKey, idx) {
+  selectEl.classList.remove('select-result-ok', 'select-result-ng', 'select-result-na');
+  if (selectEl.value === 'OK') {
+    selectEl.classList.add('select-result-ok');
+  } else if (selectEl.value === 'NG') {
+    selectEl.classList.add('select-result-ng');
+  } else {
+    selectEl.classList.add('select-result-na');
+  }
+  if (currentReport?.checklists?.[groupKey]?.[idx]) {
+    currentReport.checklists[groupKey][idx].result = selectEl.value;
+  }
+}
+
+// 處理方式與量測值文字輸入
+function updateChecklistSolution(groupKey, idx, val) {
+  if (currentReport?.checklists?.[groupKey]?.[idx]) {
+    currentReport.checklists[groupKey][idx].solution = val;
+  }
+}
+
+// 帶入空格範本並自動聚焦
+function insertTemplateSolution(groupKey, idx, templateStr) {
+  const input = document.getElementById(`checklist-sol-${groupKey}-${idx}`);
+  if (!input) return;
+  input.value = templateStr;
+  updateChecklistSolution(groupKey, idx, templateStr);
+  input.focus();
+  const spaceIdx = templateStr.indexOf('   ');
+  if (spaceIdx !== -1) {
+    input.setSelectionRange(spaceIdx, spaceIdx + 3);
+  }
+}
+
+// 一鍵批量設定判定欄 (全設 OK 或 全設 /)
+function setAllChecklistResults(groupKey, targetResult) {
+  if (!currentReport?.checklists?.[groupKey]) return;
+  currentReport.checklists[groupKey].forEach((item, idx) => {
+    item.result = targetResult;
+    const select = document.getElementById(`checklist-res-${groupKey}-${idx}`);
+    if (select) {
+      select.value = targetResult;
+      select.classList.remove('select-result-ok', 'select-result-ng', 'select-result-na');
+      if (targetResult === 'OK') select.classList.add('select-result-ok');
+      else if (targetResult === 'NG') select.classList.add('select-result-ng');
+      else select.classList.add('select-result-na');
+    }
+  });
+}
+
 function renderChecklistsEditor() {
   const container = document.getElementById('checklists-accordions');
   if (!container) return;
 
   const lists = [
-    { key: 'pv_full', title: '光電系統定期保養記錄 (全檢 100%)', items: currentReport.checklists.pv_full || [] },
-    { key: 'pv_sampling', title: '光電系統定期檢查 (抽檢 C 區)', items: currentReport.checklists.pv_sampling || [] },
-    { key: 'monitoring', title: '監控系統定期保養記錄 (全檢 100%)', items: currentReport.checklists.monitoring || [] },
-    { key: 'inverter', title: '逆變器定期保養記錄 (全檢 100%)', items: currentReport.checklists.inverter || [] },
-    { key: 'distribution_box', title: '配電箱定期保養記錄 (全檢 100%)', items: currentReport.checklists.distribution_box || [] },
-    { key: 'booster_station', title: '升壓站定期保養記錄 (全檢 100%)', items: currentReport.checklists.booster_station || [] },
-    { key: 'facility', title: '案場附屬設施維護保養記錄 (全檢 100%)', items: currentReport.checklists.facility || [] }
+    { key: 'pv_full', title: '光電系統定期保養記錄 (全檢 100%)', items: currentReport.checklists?.pv_full || [] },
+    { key: 'pv_sampling', title: '光電系統定期檢查 (抽檢 C 區)', items: currentReport.checklists?.pv_sampling || [] },
+    { key: 'monitoring', title: '監控系統定期保養記錄 (全檢 100%)', items: currentReport.checklists?.monitoring || [] },
+    { key: 'inverter', title: '逆變器定期保養記錄 (全檢 100%)', items: currentReport.checklists?.inverter || [] },
+    { key: 'distribution_box', title: '配電箱定期保養記錄 (全檢 100%)', items: currentReport.checklists?.distribution_box || [] },
+    { key: 'booster_station', title: '升壓站定期保養記錄 (全檢 100%)', items: currentReport.checklists?.booster_station || [] },
+    { key: 'facility', title: '案場附屬設施維護保養記錄 (全檢 100%)', items: currentReport.checklists?.facility || [] }
   ];
 
   container.innerHTML = lists.map(group => {
     return `
-      <details class="bg-slate-50 rounded-xl border border-slate-200 overflow-hidden" open>
-        <summary class="px-4 py-3 font-bold text-xs text-slate-800 bg-slate-100 cursor-pointer select-none">
-          ${group.title} (${group.items.length} 項)
+      <details class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs mb-4" open>
+        <summary class="px-4 py-3 font-bold text-xs text-slate-800 bg-slate-100 flex items-center justify-between cursor-pointer select-none border-b border-slate-200">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+            <span class="font-bold text-sm text-slate-900">${group.title}</span>
+            <span class="text-xs font-normal text-slate-500">(${group.items.length} 項)</span>
+          </div>
+          <div class="flex items-center gap-2" onclick="event.stopPropagation()">
+            <button type="button" onclick="setAllChecklistResults('${group.key}', 'OK')" class="text-[11px] px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold transition shadow-xs">
+              <i class="fas fa-check mr-1"></i>全設 OK
+            </button>
+            <button type="button" onclick="setAllChecklistResults('${group.key}', '/')" class="text-[11px] px-2.5 py-1 bg-slate-500 hover:bg-slate-600 text-white rounded font-bold transition shadow-xs">
+              <i class="fas fa-slash mr-1"></i>全設 /
+            </button>
+          </div>
         </summary>
         <div class="p-3 overflow-x-auto">
           <table class="w-full text-left text-xs">
-            <thead class="bg-slate-200 text-slate-700">
+            <thead class="bg-slate-100 text-slate-700 border-b border-slate-200">
               <tr>
-                <th class="p-2">設備</th>
-                <th class="p-2">工作內容</th>
-                <th class="p-2">判定</th>
+                <th class="p-2 w-1/5">設備名稱</th>
+                <th class="p-2 w-1/4">工作內容 / 檢查標準</th>
+                <th class="p-2 w-28 text-center">判定結果</th>
                 <th class="p-2">處理方式 / 量測值</th>
               </tr>
             </thead>
-            <tbody class="divide-y divide-slate-200">
-              ${group.items.map((row, idx) => `
-                <tr>
-                  <td class="p-2 font-semibold text-slate-700">${row.equip}</td>
-                  <td class="p-2">${row.item}</td>
-                  <td class="p-2">
-                    <span class="px-2 py-0.5 rounded font-bold ${row.result === 'OK' ? 'bg-emerald-100 text-emerald-800' : (row.result === '/' ? 'bg-slate-200 text-slate-600' : 'bg-rose-100 text-rose-800')}">
-                      ${row.result}
-                    </span>
-                  </td>
-                  <td class="p-2">
-                    <span class="font-mono text-blue-900">${row.solution || '-'}</span>
-                  </td>
-                </tr>
-              `).join('')}
+            <tbody class="divide-y divide-slate-100">
+              ${group.items.map((row, idx) => {
+                const tplInfo = getMeasurementTemplate(row.equip, row.item);
+                const resultClass = row.result === 'OK' ? 'select-result-ok' : (row.result === 'NG' ? 'select-result-ng' : 'select-result-na');
+                return `
+                  <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="p-2 font-semibold text-slate-800 align-top">${row.equip}</td>
+                    <td class="p-2 align-top">
+                      <div class="font-medium text-slate-900">${row.item}</div>
+                      ${row.standard ? `<div class="text-[11px] text-slate-500 mt-0.5 leading-relaxed">${row.standard}</div>` : ''}
+                    </td>
+                    <td class="p-2 align-top text-center">
+                      <select
+                        id="checklist-res-${group.key}-${idx}"
+                        class="text-xs px-2.5 py-1.5 rounded-lg border font-bold transition-colors cursor-pointer select-checklist-result ${resultClass} shadow-xs"
+                        onchange="updateChecklistResult(this, '${group.key}', ${idx})"
+                      >
+                        <option value="OK" ${row.result === 'OK' ? 'selected' : ''}>OK (合格)</option>
+                        <option value="NG" ${row.result === 'NG' ? 'selected' : ''}>NG (不合格)</option>
+                        <option value="/" ${row.result === '/' ? 'selected' : ''}>/ (無此項)</option>
+                      </select>
+                    </td>
+                    <td class="p-2 align-top">
+                      <div class="space-y-1">
+                        <input
+                          type="text"
+                          id="checklist-sol-${group.key}-${idx}"
+                          class="w-full p-2 text-xs bg-white border border-slate-300 rounded-lg focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none font-mono text-slate-800"
+                          value="${row.solution || ''}"
+                          placeholder="${tplInfo.hasData ? ('範本：' + tplInfo.template) : '請輸入處理方式或量測數值 (正常無可留空)'}"
+                          oninput="updateChecklistSolution('${group.key}', ${idx}, this.value)"
+                        />
+                        ${tplInfo.hasData ? `
+                          <div class="flex items-center justify-between text-[11px] bg-amber-50 text-amber-900 px-2.5 py-1 rounded-md border border-amber-200">
+                            <span class="flex items-center gap-1">
+                              <i class="fas fa-ruler-combined text-amber-600"></i>
+                              <span>需輸入數據：</span>
+                              <code class="font-mono bg-white px-1.5 py-0.5 rounded border border-amber-300 font-bold text-amber-800">${tplInfo.template}</code>
+                              <span class="text-amber-700 text-[10px]">(${tplInfo.hint})</span>
+                            </span>
+                            <button
+                              type="button"
+                              onclick="insertTemplateSolution('${group.key}', ${idx}, '${tplInfo.template}')"
+                              class="text-[10px] px-2 py-0.5 bg-amber-500 hover:bg-amber-600 text-white rounded font-bold transition ml-2 shadow-xs shrink-0 cursor-pointer"
+                            >
+                              帶入空白範本
+                            </button>
+                          </div>
+                        ` : ''}
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -453,10 +595,38 @@ async function saveCurrentReport() {
   env.module_temp = parseFloat(document.getElementById('edit-module-temp').value) || 44.1;
   currentReport.environmental_data = env;
 
+  // 儲存建議事項
+  const sysKeys = ['pv_system', 'monitoring_system', 'inverter', 'ac_box', 'high_voltage'];
+  sysKeys.forEach(k => {
+    const stEl = document.getElementById(`sug-${k}-status`);
+    const descEl = document.getElementById(`sug-${k}-desc`);
+    const treatEl = document.getElementById(`sug-${k}-treatment`);
+    if (!currentReport.suggestions) currentReport.suggestions = {};
+    currentReport.suggestions[k] = {
+      status: stEl ? stEl.value : (currentReport.suggestions[k]?.status || '正常'),
+      desc: descEl ? descEl.value : (currentReport.suggestions[k]?.desc || '正常'),
+      treatment: treatEl ? treatEl.value : (currentReport.suggestions[k]?.treatment || '')
+    };
+  });
+
+  // 儲存所有定檢表最新輸入值 (判定結果 + 處理方式/量測值)
+  const groupKeys = ['pv_full', 'pv_sampling', 'monitoring', 'inverter', 'distribution_box', 'booster_station', 'facility'];
+  groupKeys.forEach(gKey => {
+    if (currentReport.checklists && currentReport.checklists[gKey]) {
+      currentReport.checklists[gKey].forEach((item, idx) => {
+        const resEl = document.getElementById(`checklist-res-${gKey}-${idx}`);
+        const solEl = document.getElementById(`checklist-sol-${gKey}-${idx}`);
+        if (resEl) item.result = resEl.value;
+        if (solEl) item.solution = solEl.value;
+      });
+    }
+  });
+
   await window.supabaseService.saveReport(currentReport);
   allReports = await window.supabaseService.getReports();
   renderReportsTable();
-  alert('✅ 報告已儲存完成！');
+  renderOfficialReportView();
+  alert('✅ 報告及各系統定檢表已儲存同步完成！');
 }
 
 // 送審核
@@ -574,6 +744,60 @@ function exportReportJson() {
 // ==============================================================================
 // 1:1 像素級重現進金生 CF-086 正式紙本報告渲染 (Full 33 Pages Replication)
 // ==============================================================================
+// 輔助函式：渲染 1:1 官方定檢表單頁
+function renderOfficialChecklistPage(pageNum, titleZh, titleEn, checkingRate, rows = [], formVersion = 'CF-086 版次 11', logoUrl = 'assets/acme_logo.jpeg') {
+  return `
+    <div class="cf086-page">
+      <div class="cf086-header-logo">
+        <div class="flex items-center gap-2">
+          <img src="${logoUrl}" class="h-6">
+          <span class="text-[11px] font-bold text-orange-600">進金生能源服務股份有限公司 ACMEPOINT ENERGY SERVICES CO., LTD.</span>
+        </div>
+        <span class="text-xs font-mono">${pageNum} / ${formVersion}</span>
+      </div>
+
+      <div class="text-center font-bold text-xs mb-3">
+        ${titleZh} 檢驗比例:${checkingRate}<br>
+        <span class="font-normal">${titleEn} Checking % : ${checkingRate}</span>
+      </div>
+
+      <table class="cf086-table text-xs">
+        <thead>
+          <tr>
+            <th class="w-1/6">設備名稱<br>Equipment</th>
+            <th class="w-1/4">工作內容<br>Items</th>
+            <th class="w-5/12">檢查標準<br>Inspection Standard</th>
+            <th class="w-16">判定結果<br>Result</th>
+            <th>處理方式 / 量測值<br>Solution</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(row => `
+            <tr>
+              <td class="font-semibold">${row.equip}</td>
+              <td>${row.item}</td>
+              <td class="text-[11px] text-slate-700 leading-snug">${row.standard || ''}</td>
+              <td class="text-center font-bold ${row.result === 'OK' ? 'text-emerald-700' : (row.result === 'NG' ? 'text-rose-700 font-extrabold' : 'text-slate-500')}">${row.result}</td>
+              <td class="font-mono text-[11px] ${row.solution ? 'text-blue-900 font-semibold' : 'text-slate-400'}">${row.solution || '-'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div class="text-[11px] text-slate-700 mt-2 flex justify-between">
+        <span>判定結果 Result： 合格 Pass : OK</span>
+        <span>不合格 Fail : NG</span>
+        <span>無此項目 N/A : /</span>
+      </div>
+
+      <div class="cf086-footer-info">
+        <span>${pageNum}</span>
+        <span>${formVersion}</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderOfficialReportView() {
   const container = document.getElementById('cf086-report-render-target');
   if (!container || !currentReport) return;
@@ -955,56 +1179,12 @@ function renderOfficialReportView() {
   // ---------------------------------------------------------
   // PAGE 8: 光電系統定期維護保養檢查記錄表 (全檢 100%)
   // ---------------------------------------------------------
-  html += `
-    <div class="cf086-page">
-      <div class="cf086-header-logo">
-        <div class="flex items-center gap-2">
-          <img src="${rep.logo_url || 'assets/acme_logo.jpeg'}" class="h-6">
-          <span class="text-[11px] font-bold text-orange-600">進金生能源服務股份有限公司 ACMEPOINT ENERGY SERVICES CO., LTD.</span>
-        </div>
-        <span class="text-xs font-mono">8 / ${rep.form_version}</span>
-      </div>
+  html += renderOfficialChecklistPage(8, '光電系統定期維護保養檢查記錄表', 'PV System Regular Maintenance Inspection Checklist', '全檢 100%', rep.checklists.pv_full || [], rep.form_version, rep.logo_url);
 
-      <div class="text-center font-bold text-xs mb-3">
-        光電系統定期維護保養檢查記錄表 檢驗比例:全檢<br>
-        <span class="font-normal">PV System Regular Maintenance Inspection Checklist Checking % : 100%</span>
-      </div>
-
-      <table class="cf086-table text-xs">
-        <thead>
-          <tr>
-            <th class="w-1/6">設備名稱<br>Equipment</th>
-            <th class="w-1/4">工作內容<br>Items</th>
-            <th class="w-5/12">檢查標準<br>Inspection Standard</th>
-            <th class="w-16">判定結果<br>Result</th>
-            <th>處理方式<br>Solution</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${(rep.checklists.pv_full || []).map(row => `
-            <tr>
-              <td class="font-semibold">${row.equip}</td>
-              <td>${row.item}</td>
-              <td class="text-[11px]">${row.standard}</td>
-              <td class="text-center font-bold">${row.result}</td>
-              <td class="font-mono text-[11px]">${row.solution}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-
-      <div class="text-[11px] text-slate-700 mt-2 flex justify-between">
-        <span>判定結果 Result： 合格 Pass : OK</span>
-        <span>不合格 Fail : NG</span>
-        <span>無此項目 N/A : /</span>
-      </div>
-
-      <div class="cf086-footer-info">
-        <span>8</span>
-        <span>${rep.form_version}</span>
-      </div>
-    </div>
-  `;
+  // ---------------------------------------------------------
+  // PAGE 9: 光電系統定期維護保養檢查記錄表 (抽檢 C 區)
+  // ---------------------------------------------------------
+  html += renderOfficialChecklistPage(9, '光電系統定期維護保養檢查記錄表', 'PV System Regular Maintenance Inspection Checklist', '抽檢 (C 區)', rep.checklists.pv_sampling || [], rep.form_version, rep.logo_url);
 
   // ---------------------------------------------------------
   // PAGE 11: 螺絲鎖固判定標準 & 抽檢區域 CAD 圖
@@ -1049,6 +1229,31 @@ function renderOfficialReportView() {
       </div>
     </div>
   `;
+
+  // ---------------------------------------------------------
+  // PAGE 12: 監控系統定期維護保養記錄表 (全檢 100%)
+  // ---------------------------------------------------------
+  html += renderOfficialChecklistPage(12, '監控系統定期維護保養記錄表', 'Monitoring System Regular Maintenance Inspection Checklist', '全檢 100%', rep.checklists.monitoring || [], rep.form_version, rep.logo_url);
+
+  // ---------------------------------------------------------
+  // PAGE 13: 逆變器定期維護保養記錄表 (全檢 100%)
+  // ---------------------------------------------------------
+  html += renderOfficialChecklistPage(13, '逆變器定期維護保養記錄表', 'Inverter Regular Maintenance Inspection Checklist', '全檢 100%', rep.checklists.inverter || [], rep.form_version, rep.logo_url);
+
+  // ---------------------------------------------------------
+  // PAGE 14: 配電箱定期維護保養記錄表 (全檢 100%)
+  // ---------------------------------------------------------
+  html += renderOfficialChecklistPage(14, '配電箱定期維護保養記錄表', 'Distribution Box Regular Maintenance Inspection Checklist', '全檢 100%', rep.checklists.distribution_box || [], rep.form_version, rep.logo_url);
+
+  // ---------------------------------------------------------
+  // PAGE 15: 升壓站定期維護保養記錄表 (全檢 100%)
+  // ---------------------------------------------------------
+  html += renderOfficialChecklistPage(15, '升壓站定期維護保養記錄表', 'Booster Station Regular Maintenance Inspection Checklist', '全檢 100%', rep.checklists.booster_station || [], rep.form_version, rep.logo_url);
+
+  // ---------------------------------------------------------
+  // PAGE 16: 案場附屬設施維護保養記錄表 (全檢 100%)
+  // ---------------------------------------------------------
+  html += renderOfficialChecklistPage(16, '案場附屬設施維護保養記錄表', 'Facility Regular Maintenance Inspection Checklist', '全檢 100%', rep.checklists.facility || [], rep.form_version, rep.logo_url);
 
   // ---------------------------------------------------------
   // PAGE 22: 有載直流電性測試標準說明頁
