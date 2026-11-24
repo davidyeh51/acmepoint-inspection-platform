@@ -7,132 +7,157 @@ let currentReport = null;
 let currentRole = 'engineer'; // 'engineer' | 'manager' | 'client'
 let allReports = [];
 
-// DOM 載入後初始化
+// DOM 載入後初始化（先執行 60 天網路金鑰驗證，解鎖後才載入資料庫）
 document.addEventListener('DOMContentLoaded', async () => {
-  // 1. 初始化 Lucide 圖標
   if (window.lucide) lucide.createIcons();
-
-  // 2. 載入資料
-  await initializeApp();
-
-  // 3. 綁定拖曳上傳監聽
   setupDropzone();
+
+  if (window.InspAuth) {
+    const unlocked = await window.InspAuth.init();
+    if (!unlocked) return;
+  }
+
+  await initializeApp();
 });
 
 async function initializeApp() {
   updateSupabaseStatusPill();
 
-  // 預填 Supabase 設定表單
-  if (document.getElementById('sb-settings-url')) {
-    document.getElementById('sb-settings-url').value = SupabaseConfig.getUrl();
-  }
-  if (document.getElementById('sb-settings-key')) {
-    document.getElementById('sb-settings-key').value = SupabaseConfig.getKey();
-  }
-
-  // 載入報告清單 (優先自 Supabase 雲端即時同步)
+  // 載入報告清單 (優先自 Supabase 雲端即時同步，已通過網路金鑰簽發之 RLS 驗證)
   allReports = await window.supabaseService.getReports();
   currentReport = allReports[0] || window.SEED_REPORT;
+
+  // 更新 KPI 統計
+  updateDashboardStats();
 
   // 渲染清單與表單
   renderReportsTable();
   populateFormFromReport();
   renderOfficialReportView();
   updateReviewTab();
-  loadSqlSchemaPreview();
+
+  // 支援 URL Hash 指定預覽 (#preview?id=...)
+  if (window.location.hash && window.location.hash.startsWith('#preview')) {
+    const q = window.location.hash.split('?')[1] || '';
+    const idParam = new URLSearchParams(q).get('id');
+    if (idParam) selectReport(idParam);
+    switchTab('preview');
+  }
+}
+
+function updateDashboardStats() {
+  const completedEl = document.getElementById('stat-completed-count');
+  const pendingEl = document.getElementById('stat-pending-review');
+  if (completedEl) completedEl.textContent = `${allReports.length} 案場`;
+  if (pendingEl) {
+    const pendingCnt = allReports.filter(r => r.status === 'submitted').length;
+    pendingEl.textContent = `${pendingCnt} 件`;
+  }
 }
 
 // 狀態指示燈
 function updateSupabaseStatusPill() {
   const isConn = window.supabaseService && window.supabaseService.isConnected;
-  const pill = document.getElementById('supabase-status-pill');
+  const dot = document.getElementById('supabase-status-dot');
   const text = document.getElementById('supabase-status-text');
+  if (!text) return;
 
   if (isConn) {
-    pill.className = 'flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 transition shadow-sm';
-    text.textContent = '🟢 Supabase 雲端已連線 (即時同步)';
+    if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-600';
+    text.textContent = 'Supabase 雲端已連線（RLS 金鑰保護）';
   } else {
-    pill.className = 'flex items-center space-x-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-300 hover:bg-amber-100 transition shadow-sm';
-    text.textContent = '🟠 本地展示模式 (點擊設定)';
+    if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+    text.textContent = '本地離線快取模式';
   }
 }
 
-// 分頁切換
+// 分頁切換（McKinsey OSS 頁首導航 + 金鑰 RBAC 權限檢查）
 function switchTab(tabId) {
+  if (window.InspAuth) {
+    if (tabId === 'admin' && !window.InspAuth.isAdmin()) {
+      showToast('僅管理員或擁有者金鑰可存取金鑰後台。', true);
+      return;
+    }
+    if ((tabId === 'ai-input' || tabId === 'editor') && !window.InspAuth.canEdit()) {
+      showToast('目前為唯讀金鑰，僅供檢視與列印報告。', true);
+      return;
+    }
+  }
+
   document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.remove('bg-blue-700', 'text-white', 'shadow-sm', 'active');
-    btn.classList.add('text-slate-600', 'hover:bg-slate-200');
+  document.querySelectorAll('.mc-tab.tab-btn').forEach(btn => {
+    btn.removeAttribute('aria-current');
   });
 
   const activeContent = document.getElementById(`tab-${tabId}`);
   const activeBtn = document.getElementById(`tab-btn-${tabId}`);
   if (activeContent) activeContent.classList.remove('hidden');
-  if (activeBtn) {
-    activeBtn.classList.remove('text-slate-600', 'hover:bg-slate-200');
-    activeBtn.classList.add('bg-blue-700', 'text-white', 'shadow-sm', 'active');
-  }
+  if (activeBtn) activeBtn.setAttribute('aria-current', 'page');
 
   if (tabId === 'preview') {
     renderOfficialReportView();
   } else if (tabId === 'review') {
     updateReviewTab();
+  } else if (tabId === 'admin' && window.InspAuth) {
+    window.InspAuth.loadAdminConsole();
   }
 
   if (window.lucide) lucide.createIcons();
 }
 
-// 角色切換
-function setRole(role) {
-  currentRole = role;
-  ['engineer', 'manager', 'client'].forEach(r => {
-    const btn = document.getElementById(`role-${r}-btn`);
-    if (r === role) {
-      btn.className = 'px-2.5 py-1 rounded bg-white text-blue-700 shadow-sm font-semibold transition';
-    } else {
-      btn.className = 'px-2.5 py-1 rounded text-slate-600 hover:text-slate-900 transition';
-    }
-  });
-
-  if (role === 'client') {
-    switchTab('preview');
+// 搜尋過濾報告清單
+function filterReportsList() {
+  const kw = String(document.getElementById('report-search-input')?.value || '').trim().toLowerCase();
+  if (!kw) {
+    renderReportsTable(allReports);
+    return;
   }
+  const filtered = allReports.filter(rep => {
+    const hay = [
+      rep.report_number,
+      rep.site_name,
+      rep.inspection_date,
+      rep.quarter,
+      Array.isArray(rep.engineers) ? rep.engineers.join(' ') : rep.engineers,
+    ].join(' ').toLowerCase();
+    return hay.includes(kw);
+  });
+  renderReportsTable(filtered);
 }
 
 // 渲染報告清單
-function renderReportsTable() {
+function renderReportsTable(list = allReports) {
   const tbody = document.getElementById('reports-table-body');
   if (!tbody) return;
 
-  tbody.innerHTML = allReports.map(rep => {
+  if (!list || list.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--mute);text-align:center;padding:24px">查無符合條件之巡檢報告</td></tr>';
+    return;
+  }
+
+  const canEdit = !window.InspAuth || window.InspAuth.canEdit();
+
+  tbody.innerHTML = list.map(rep => {
     const statusMap = {
-      draft: { text: '草稿', cls: 'badge-draft' },
-      submitted: { text: '待主管審核', cls: 'badge-submitted' },
-      approved: { text: '已核准', cls: 'badge-approved' },
-      dispatched: { text: '已發送業主', cls: 'badge-dispatched' }
+      draft: { text: '草稿', cls: 'status-badge off' },
+      submitted: { text: '待主管審核', cls: 'badge-submitted status-badge' },
+      approved: { text: '已核准', cls: 'status-badge on' },
+      dispatched: { text: '已發送業主', cls: 'badge-dispatched status-badge' }
     };
-    const st = statusMap[rep.status] || { text: rep.status, cls: 'badge-draft' };
+    const st = statusMap[rep.status] || { text: rep.status, cls: 'status-badge off' };
     const engineers = Array.isArray(rep.engineers) ? rep.engineers.join('、') : rep.engineers;
 
     return `
-      <tr class="hover:bg-slate-50 transition cursor-pointer" onclick="selectReport('${rep.id}')">
-        <td class="px-5 py-3 font-mono font-bold text-blue-900">${rep.report_number}</td>
-        <td class="px-5 py-3 font-bold text-slate-800">${rep.site_name}</td>
-        <td class="px-5 py-3">${rep.capacity_kwp} kWp</td>
-        <td class="px-5 py-3">${rep.inspection_date} (${rep.quarter})</td>
-        <td class="px-5 py-3">${engineers}</td>
-        <td class="px-5 py-3">
-          <span class="text-xs px-2.5 py-0.5 rounded font-bold ${st.cls}">
-            ${st.text}
-          </span>
-        </td>
-        <td class="px-5 py-3 text-right space-x-1">
-          <button onclick="event.stopPropagation(); selectReport('${rep.id}'); switchTab('preview');" class="px-2.5 py-1 rounded bg-blue-50 text-blue-700 font-semibold hover:bg-blue-100 transition">
-            預覽
-          </button>
-          <button onclick="event.stopPropagation(); selectReport('${rep.id}'); switchTab('editor');" class="px-2.5 py-1 rounded bg-slate-100 text-slate-700 font-semibold hover:bg-slate-200 transition">
-            編輯
-          </button>
+      <tr style="cursor:pointer" onclick="selectReport('${rep.id}')">
+        <td><span class="mono-code" style="font-weight:700">${rep.report_number}</span></td>
+        <td><strong style="color:var(--navy)">${rep.site_name}</strong></td>
+        <td style="font-variant-numeric:tabular-nums">${rep.capacity_kwp} kWp</td>
+        <td style="font-variant-numeric:tabular-nums">${rep.inspection_date}（${rep.quarter}）</td>
+        <td>${engineers}</td>
+        <td><span class="${st.cls}">${st.text}</span></td>
+        <td style="text-align:right;white-space:nowrap">
+          <button onclick="event.stopPropagation(); selectReport('${rep.id}'); switchTab('preview');" class="mc-link">預覽列印</button>
+          ${canEdit ? ` · <button onclick="event.stopPropagation(); selectReport('${rep.id}'); switchTab('editor');" class="mc-link">編輯</button>` : ''}
         </td>
       </tr>
     `;
@@ -624,44 +649,66 @@ async function saveCurrentReport() {
 
   await window.supabaseService.saveReport(currentReport);
   allReports = await window.supabaseService.getReports();
+  updateDashboardStats();
   renderReportsTable();
   renderOfficialReportView();
-  alert('✅ 報告及各系統定檢表已儲存同步完成！');
+  if (window.InspAuth) window.InspAuth.logEvent('report_saved', currentReport.report_number, { site: currentReport.site_name });
+  if (typeof showToast === 'function') showToast('報告及各系統定檢表已儲存同步完成。');
 }
 
 // 送審核
 async function submitToReview() {
+  if (window.InspAuth && !window.InspAuth.canEdit()) {
+    showToast('目前金鑰權限不允許編輯或送審報告。', true);
+    return;
+  }
   await saveCurrentReport();
   currentReport.status = 'submitted';
   await window.supabaseService.saveReport(currentReport);
   allReports = await window.supabaseService.getReports();
+  updateDashboardStats();
   renderReportsTable();
   updateReviewTab();
-  alert('📤 已成功送交主管審核！');
+  if (window.InspAuth) window.InspAuth.logEvent('report_submitted', currentReport.report_number);
+  if (typeof showToast === 'function') showToast('已成功送交主管審核。');
   switchTab('review');
 }
 
 // 主管審核核准
 async function approveReport() {
+  if (window.InspAuth && !window.InspAuth.canApprove()) {
+    showToast('僅具備「審核簽章」權限之主管／管理員金鑰可核准報告。', true);
+    return;
+  }
   const comments = document.getElementById('review-comments-input').value;
-  await window.supabaseService.updateReportStatus(currentReport.id, 'approved', '維運一課課長', comments);
+  const approverLabel = (window.InspAuth && window.InspAuth.profile?.label) ? window.InspAuth.profile.label : '維運一課課長';
+  await window.supabaseService.updateReportStatus(currentReport.id, 'approved', approverLabel, comments);
   currentReport = await window.supabaseService.getReportById(currentReport.id);
   allReports = await window.supabaseService.getReports();
+  updateDashboardStats();
   renderReportsTable();
   updateReviewTab();
   renderOfficialReportView();
-  alert('🛡️ 審核已核准！已自動加蓋「115.09.11 維運一課專用章」，可立即派送給業主客戶！');
+  if (window.InspAuth) window.InspAuth.logEvent('report_approved', currentReport.report_number, { comments });
+  if (typeof showToast === 'function') showToast('審核已核准並加蓋維運課專用章，可立即派送業主。');
 }
 
 // 主管退回
 async function rejectReport() {
+  if (window.InspAuth && !window.InspAuth.canApprove()) {
+    showToast('僅具備「審核簽章」權限之主管／管理員金鑰可退回報告。', true);
+    return;
+  }
   const comments = document.getElementById('review-comments-input').value;
-  await window.supabaseService.updateReportStatus(currentReport.id, 'draft', '維運一課課長', comments);
+  const approverLabel = (window.InspAuth && window.InspAuth.profile?.label) ? window.InspAuth.profile.label : '維運一課課長';
+  await window.supabaseService.updateReportStatus(currentReport.id, 'draft', approverLabel, comments);
   currentReport = await window.supabaseService.getReportById(currentReport.id);
   allReports = await window.supabaseService.getReports();
+  updateDashboardStats();
   renderReportsTable();
   updateReviewTab();
-  alert('⚠️ 報告已退回為草稿，通知工程師補充量測數據。');
+  if (window.InspAuth) window.InspAuth.logEvent('report_rejected', currentReport.report_number, { comments });
+  if (typeof showToast === 'function') showToast('報告已退回草稿狀態。');
 }
 
 // 更新審核與派送分頁內容
@@ -734,11 +781,16 @@ function copyDispatchText() {
 
 // 導出 JSON
 function exportReportJson() {
+  if (window.InspAuth && !window.InspAuth.permissions?.can_export) {
+    showToast('目前金鑰權限不允許匯出 JSON 檔案。', true);
+    return;
+  }
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentReport, null, 2));
   const dlAnchor = document.createElement('a');
   dlAnchor.setAttribute("href", dataStr);
   dlAnchor.setAttribute("download", `${currentReport.report_number}.json`);
   dlAnchor.click();
+  if (window.InspAuth) window.InspAuth.logEvent('report_exported_json', currentReport.report_number);
 }
 
 // ==============================================================================

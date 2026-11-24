@@ -237,3 +237,53 @@ CREATE TRIGGER set_inspection_reports_updated_at
     BEFORE UPDATE ON public.inspection_reports
     FOR EACH ROW
     EXECUTE PROCEDURE update_updated_at_column();
+
+
+-- ==============================================================================
+-- 8. 60 天強制輪替網路存取金鑰安全架構 (取代傳統帳號管理)
+--    Applied to Supabase project cowljafosekwvxithwjd
+-- ==============================================================================
+CREATE TABLE IF NOT EXISTS public.insp_access_keys (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  label text NOT NULL,
+  key_hint text NOT NULL,
+  key_salt text NOT NULL,
+  key_hash text NOT NULL,
+  scope text NOT NULL DEFAULT 'member' CHECK (scope = ANY (ARRAY['owner'::text, 'admin'::text, 'member'::text, 'viewer'::text])),
+  can_export boolean NOT NULL DEFAULT true,
+  can_edit boolean NOT NULL DEFAULT true,
+  can_approve boolean NOT NULL DEFAULT false,
+  enabled boolean NOT NULL DEFAULT true,
+  enforce_expiry boolean NOT NULL DEFAULT true,
+  expires_at timestamptz NOT NULL DEFAULT (now() + interval '60 days'),
+  usage_count integer NOT NULL DEFAULT 0,
+  last_used_at timestamptz,
+  created_by text NOT NULL DEFAULT 'system',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.insp_access_keys ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.insp_access_keys FROM PUBLIC, anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS public.insp_portal_config (
+  key text PRIMARY KEY,
+  value jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_by text NOT NULL DEFAULT 'system',
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.insp_portal_config ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.insp_portal_config FROM PUBLIC, anon, authenticated;
+
+CREATE TABLE IF NOT EXISTS public.insp_audit_logs (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  actor_email text,
+  action text NOT NULL,
+  target text,
+  detail jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS insp_audit_logs_created_at_idx ON public.insp_audit_logs (created_at DESC);
+ALTER TABLE public.insp_audit_logs ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.insp_audit_logs FROM PUBLIC, anon, authenticated;
+
+REVOKE ALL ON public.sites, public.inspection_reports, public.inspection_photos FROM PUBLIC, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.sites, public.inspection_reports, public.inspection_photos TO authenticated;
